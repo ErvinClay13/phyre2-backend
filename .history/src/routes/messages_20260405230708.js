@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db, admin } = require('../firebase');
+const { db } = require('../firebase');
 const verifyToken = require('../middleware/auth');
 
 // POST /api/messages/send

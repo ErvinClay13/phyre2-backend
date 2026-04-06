@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { db, admin } = require('../firebase');
+const { db } = require('../firebase');
 const verifyToken = require('../middleware/auth');
 
-admin.firestore.FieldValue.serverTimestamp()
+
 
 
 // POST /api/swipe
@@ -36,7 +36,7 @@ router.post('/', verifyToken, async (req, res) => {
 
     batch.set(swipeRef, {
       direction,
-      swipedAt: admin.firestore.FieldValue.serverTimestamp(),
+      swipedAt: new Date(),
     });
 
     let isMatch = false;
@@ -50,7 +50,7 @@ router.post('/', verifyToken, async (req, res) => {
         .doc(targetUserId);
 
       batch.set(likeRef, {
-        likedAt: admin.firestore.FieldValue.serverTimestamp(),
+        likedAt: new Date(),
         uid: targetUserId,
       });
 
@@ -81,12 +81,12 @@ router.post('/', verifyToken, async (req, res) => {
           .doc(userId);
 
         matchBatch.set(myMatchRef, {
-          matchedAt: admin.firestore.FieldValue.serverTimestamp(),
+          matchedAt: new Date(),
           uid: targetUserId,
         });
 
         matchBatch.set(theirMatchRef, {
-          matchedAt: admin.firestore.FieldValue.serverTimestamp(),
+          matchedAt: new Date(),
           uid: userId,
         });
 
@@ -136,7 +136,7 @@ router.post('/like', verifyToken, async (req, res) => {
     }
 
     // Like
-    await likeRef.set({ likedAt: admin.firestore.FieldValue.serverTimestamp(), uid: targetUserId });
+    await likeRef.set({ likedAt: new Date(), uid: targetUserId });
 
     // Check for mutual match
     const theirLike = await db
@@ -153,12 +153,12 @@ router.post('/like', verifyToken, async (req, res) => {
 
       matchBatch.set(
         db.collection('users').doc(userId).collection('matches').doc(targetUserId),
-        { matchedAt: admin.firestore.FieldValue.serverTimestamp(), uid: targetUserId }
+        { matchedAt: new Date(), uid: targetUserId }
       );
 
       matchBatch.set(
         db.collection('users').doc(targetUserId).collection('matches').doc(userId),
-        { matchedAt: admin.firestore.FieldValue.serverTimestamp(), uid: userId }
+        { matchedAt: new Date(), uid: userId }
       );
 
       await matchBatch.commit();

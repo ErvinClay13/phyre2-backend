@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db, admin } = require('../firebase');
+const { db } = require('../firebase');
 const verifyToken = require('../middleware/auth');
 
 // POST /api/messages/send
@@ -39,13 +39,13 @@ router.post('/send', verifyToken, async (req, res) => {
     const conversationId = [fromUserId, toUserId].sort().join('_');
 
     const messageData = {
-  fromUserId,
-  toUserId,
-  text,
-  sentAt: admin.firestore.FieldValue.serverTimestamp(),
-  read: false,
-  isRequest,
-};
+      fromUserId,
+      toUserId,
+      text,
+      sentAt: new Date(),
+      read: false,
+      isRequest,
+    };
 
     // Add message to conversation
     await db
