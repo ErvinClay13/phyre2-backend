@@ -3,6 +3,12 @@ const router = express.Router();
 const { db, admin } = require('../firebase');
 const verifyToken = require('../middleware/auth');
 
+
+
+
+admin.firestore.FieldValue.serverTimestamp()
+
+
 // POST /api/swipe
 // Body: { targetUserId, direction }
 router.post('/', verifyToken, async (req, res) => {
@@ -51,18 +57,6 @@ router.post('/', verifyToken, async (req, res) => {
         uid: targetUserId,
       });
 
-      // Write to target user's likedBy collection
-      const likedByRef = db
-        .collection('users')
-        .doc(targetUserId)
-        .collection('likedBy')
-        .doc(userId);
-
-      batch.set(likedByRef, {
-        likedAt: admin.firestore.FieldValue.serverTimestamp(),
-        uid: userId,
-      });
-
       await batch.commit();
 
       // Check if the other user already liked us
@@ -77,23 +71,27 @@ router.post('/', verifyToken, async (req, res) => {
         // It's a match — create match documents for both users
         const matchBatch = db.batch();
 
-        matchBatch.set(
-          db.collection('users').doc(userId).collection('matches').doc(targetUserId),
-          { matchedAt: admin.firestore.FieldValue.serverTimestamp(), uid: targetUserId }
-        );
+        const myMatchRef = db
+          .collection('users')
+          .doc(userId)
+          .collection('matches')
+          .doc(targetUserId);
 
-        matchBatch.set(
-          db.collection('users').doc(targetUserId).collection('matches').doc(userId),
-          { matchedAt: admin.firestore.FieldValue.serverTimestamp(), uid: userId }
-        );
+        const theirMatchRef = db
+          .collection('users')
+          .doc(targetUserId)
+          .collection('matches')
+          .doc(userId);
 
-        // Remove from likedBy since now matched
-        matchBatch.delete(
-          db.collection('users').doc(userId).collection('likedBy').doc(targetUserId)
-        );
-        matchBatch.delete(
-          db.collection('users').doc(targetUserId).collection('likedBy').doc(userId)
-        );
+        matchBatch.set(myMatchRef, {
+          matchedAt: admin.firestore.FieldValue.serverTimestamp(),
+          uid: targetUserId,
+        });
+
+        matchBatch.set(theirMatchRef, {
+          matchedAt: admin.firestore.FieldValue.serverTimestamp(),
+          uid: userId,
+        });
 
         await matchBatch.commit();
         isMatch = true;
@@ -125,6 +123,7 @@ router.post('/like', verifyToken, async (req, res) => {
   }
 
   try {
+    // Check if already liked — toggle
     const likeRef = db
       .collection('users')
       .doc(userId)
@@ -134,33 +133,13 @@ router.post('/like', verifyToken, async (req, res) => {
     const existing = await likeRef.get();
 
     if (existing.exists) {
-      // Unlike — also remove from likedBy
+      // Unlike
       await likeRef.delete();
-      await db
-        .collection('users')
-        .doc(targetUserId)
-        .collection('likedBy')
-        .doc(userId)
-        .delete();
-
       return res.status(200).json({ success: true, liked: false, isMatch: false });
     }
 
     // Like
-    const likeBatch = db.batch();
-
-    likeBatch.set(likeRef, {
-      likedAt: admin.firestore.FieldValue.serverTimestamp(),
-      uid: targetUserId,
-    });
-
-    // Write to target user's likedBy collection
-    likeBatch.set(
-      db.collection('users').doc(targetUserId).collection('likedBy').doc(userId),
-      { likedAt: admin.firestore.FieldValue.serverTimestamp(), uid: userId }
-    );
-
-    await likeBatch.commit();
+    await likeRef.set({ likedAt: admin.firestore.FieldValue.serverTimestamp(), uid: targetUserId });
 
     // Check for mutual match
     const theirLike = await db
@@ -183,14 +162,6 @@ router.post('/like', verifyToken, async (req, res) => {
       matchBatch.set(
         db.collection('users').doc(targetUserId).collection('matches').doc(userId),
         { matchedAt: admin.firestore.FieldValue.serverTimestamp(), uid: userId }
-      );
-
-      // Remove from likedBy since now matched
-      matchBatch.delete(
-        db.collection('users').doc(userId).collection('likedBy').doc(targetUserId)
-      );
-      matchBatch.delete(
-        db.collection('users').doc(targetUserId).collection('likedBy').doc(userId)
       );
 
       await matchBatch.commit();
