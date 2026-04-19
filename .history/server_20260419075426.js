@@ -12,7 +12,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use('/api/pulse', pulseRoutes);
+
 
 // Health check
 app.get('/', (req, res) => {
