@@ -1,7 +1,9 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { db, admin } = require('../firebase');
-const verifyToken = require('../middleware/auth');
+const { db, admin } = require("../firebase");
+const verifyToken = require("../middleware/auth");
+
+
 
 // Helper: get coordinates from city
 async function getCoordsFromCity(cityName) {
@@ -16,22 +18,27 @@ async function getCoordsFromCity(cityName) {
       return { lat, lng };
     }
     return null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // Helper: distance in miles
 function getDistanceMiles(lat1, lon1, lat2, lon2) {
   const R = 3958.8;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // GET /api/pulse - get feed
+// Full updated GET / route in pulse.js
 router.get('/', verifyToken, async (req, res) => {
   const { city, radius = 25 } = req.query;
 
@@ -101,29 +108,32 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 // POST /api/pulse - create post
-router.post('/', verifyToken, async (req, res) => {
+router.post("/", verifyToken, async (req, res) => {
   const { text, city, coordinates, imageUrl } = req.body;
   const userId = req.user.uid;
 
   if (!text || !text.trim()) {
-    return res.status(400).json({ error: 'Text is required' });
+    return res.status(400).json({ error: "Text is required" });
   }
 
   if (text.length > 280) {
-    return res.status(400).json({ error: 'Text must be 280 characters or less' });
+    return res
+      .status(400)
+      .json({ error: "Text must be 280 characters or less" });
   }
 
   try {
     // Check posting limit — max 2 posts per 6 hours
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const recentPosts = await db.collection('pulse')
-      .where('userId', '==', userId)
-      .where('createdAt', '>', sixHoursAgo)
+    const recentPosts = await db
+      .collection("pulse")
+      .where("userId", "==", userId)
+      .where("createdAt", ">", sixHoursAgo)
       .get();
 
     if (recentPosts.size >= 2) {
       return res.status(429).json({
-        error: 'You can only post 2 Pulses every 6 hours. Try again later.'
+        error: "You can only post 2 Pulses every 6 hours. Try again later.",
       });
     }
 
@@ -133,7 +143,7 @@ router.post('/', verifyToken, async (req, res) => {
     const postData = {
       userId,
       text: text.trim(),
-      city: city || '',
+      city: city || "",
       coordinates: coordinates || null,
       imageUrl: imageUrl || null,
       likes: [],
@@ -142,30 +152,30 @@ router.post('/', verifyToken, async (req, res) => {
       expiresAt,
     };
 
-    const docRef = await db.collection('pulse').add(postData);
+    const docRef = await db.collection("pulse").add(postData);
 
     return res.status(200).json({
       success: true,
       postId: docRef.id,
-      message: 'Pulse posted!',
+      message: "Pulse posted!",
     });
   } catch (error) {
-    console.error('Create pulse error:', error);
-    return res.status(500).json({ error: 'Could not create pulse post' });
+    console.error("Create pulse error:", error);
+    return res.status(500).json({ error: "Could not create pulse post" });
   }
 });
 
 // POST /api/pulse/:postId/like - toggle like
-router.post('/:postId/like', verifyToken, async (req, res) => {
+router.post("/:postId/like", verifyToken, async (req, res) => {
   const { postId } = req.params;
   const userId = req.user.uid;
 
   try {
-    const postRef = db.collection('pulse').doc(postId);
+    const postRef = db.collection("pulse").doc(postId);
     const post = await postRef.get();
 
     if (!post.exists) {
-      return res.status(404).json({ error: 'Post not found' });
+      return res.status(404).json({ error: "Post not found" });
     }
 
     const likes = post.data().likes || [];
@@ -173,109 +183,123 @@ router.post('/:postId/like', verifyToken, async (req, res) => {
 
     if (isLiked) {
       await postRef.update({
-        likes: admin.firestore.FieldValue.arrayRemove(userId)
+        likes: admin.firestore.FieldValue.arrayRemove(userId),
       });
     } else {
       await postRef.update({
-        likes: admin.firestore.FieldValue.arrayUnion(userId)
+        likes: admin.firestore.FieldValue.arrayUnion(userId),
       });
     }
 
     return res.status(200).json({ success: true, liked: !isLiked });
   } catch (error) {
-    console.error('Like pulse error:', error);
-    return res.status(500).json({ error: 'Could not like post' });
+    console.error("Like pulse error:", error);
+    return res.status(500).json({ error: "Could not like post" });
   }
 });
 
 // GET /api/pulse/:postId/comments - get comments
-router.get('/:postId/comments', verifyToken, async (req, res) => {
+router.get("/:postId/comments", verifyToken, async (req, res) => {
   const { postId } = req.params;
 
   try {
-    const snapshot = await db.collection('pulse').doc(postId)
-      .collection('comments')
-      .orderBy('createdAt', 'asc')
+    const snapshot = await db
+      .collection("pulse")
+      .doc(postId)
+      .collection("comments")
+      .orderBy("createdAt", "asc")
       .get();
 
     const comments = [];
     const authorIds = [];
 
-    snapshot.forEach(doc => {
+    snapshot.forEach((doc) => {
       const data = doc.data();
       comments.push({ id: doc.id, ...data });
       authorIds.push(data.userId);
     });
 
+    // Get author profiles
     const profiles = {};
-    await Promise.all([...new Set(authorIds)].map(async uid => {
-      try {
-        const userDoc = await db.collection('users').doc(uid).get();
-        if (userDoc.exists) {
-          const data = userDoc.data();
-          profiles[uid] = { name: data.name, profilePhoto: data.profilePhoto };
-        }
-      } catch {}
-    }));
+    await Promise.all(
+      [...new Set(authorIds)].map(async (uid) => {
+        try {
+          const userDoc = await db.collection("users").doc(uid).get();
+          if (userDoc.exists) {
+            const data = userDoc.data();
+            profiles[uid] = {
+              name: data.name,
+              profilePhoto: data.profilePhoto,
+            };
+          }
+        } catch {}
+      }),
+    );
 
-    const commentsWithAuthors = comments.map(c => ({
+    const commentsWithAuthors = comments.map((c) => ({
       ...c,
       author: profiles[c.userId] || {},
     }));
 
-    return res.status(200).json({ success: true, comments: commentsWithAuthors });
+    return res
+      .status(200)
+      .json({ success: true, comments: commentsWithAuthors });
   } catch (error) {
-    console.error('Get comments error:', error);
-    return res.status(500).json({ error: 'Could not get comments' });
+    console.error("Get comments error:", error);
+    return res.status(500).json({ error: "Could not get comments" });
   }
 });
 
 // POST /api/pulse/:postId/comments - add comment
-router.post('/:postId/comments', verifyToken, async (req, res) => {
+router.post("/:postId/comments", verifyToken, async (req, res) => {
   const { postId } = req.params;
   const { text } = req.body;
   const userId = req.user.uid;
 
   if (!text || !text.trim()) {
-    return res.status(400).json({ error: 'Comment text is required' });
+    return res.status(400).json({ error: "Comment text is required" });
   }
 
   try {
-    await db.collection('pulse').doc(postId)
-      .collection('comments')
-      .add({
-        userId,
-        text: text.trim(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-    await db.collection('pulse').doc(postId).update({
-      commentCount: admin.firestore.FieldValue.increment(1),
+    await db.collection("pulse").doc(postId).collection("comments").add({
+      userId,
+      text: text.trim(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    return res.status(200).json({ success: true, message: 'Comment added' });
+    await db
+      .collection("pulse")
+      .doc(postId)
+      .update({
+        commentCount: admin.firestore.FieldValue.increment(1),
+      });
+
+    return res.status(200).json({ success: true, message: "Comment added" });
   } catch (error) {
-    console.error('Add comment error:', error);
-    return res.status(500).json({ error: 'Could not add comment' });
+    console.error("Add comment error:", error);
+    return res.status(500).json({ error: "Could not add comment" });
   }
 });
 
 // DELETE /api/pulse/:postId - delete own post
-router.delete('/:postId', verifyToken, async (req, res) => {
+router.delete("/:postId", verifyToken, async (req, res) => {
   const { postId } = req.params;
   const userId = req.user.uid;
 
   try {
-    const post = await db.collection('pulse').doc(postId).get();
-    if (!post.exists) return res.status(404).json({ error: 'Post not found' });
+    const post = await db.collection("pulse").doc(postId).get();
+    if (!post.exists) return res.status(404).json({ error: "Post not found" });
     if (post.data().userId !== userId) {
-      return res.status(403).json({ error: 'Not authorized to delete this post' });
+      return res
+        .status(403)
+        .json({ error: "Not authorized to delete this post" });
     }
-    await db.collection('pulse').doc(postId).delete();
+
+    await db.collection("pulse").doc(postId).delete();
     return res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Delete pulse error:', error);
-    return res.status(500).json({ error: 'Could not delete post' });
+    console.error("Delete pulse error:", error);
+    return res.status(500).json({ error: "Could not delete post" });
   }
 });
 

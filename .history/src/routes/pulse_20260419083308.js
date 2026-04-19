@@ -34,22 +34,20 @@ function getDistanceMiles(lat1, lon1, lat2, lon2) {
 // GET /api/pulse - get feed
 router.get('/', verifyToken, async (req, res) => {
   const { city, radius = 25 } = req.query;
+  const userId = req.user.uid;
 
   try {
+    const now = new Date();
+    const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+
     const snapshot = await db.collection('pulse')
-      .orderBy('createdAt', 'desc')
-      .limit(50)
-      .get();
+  .orderBy('createdAt', 'desc')
+  .limit(50)
+  .get();
 
     let posts = [];
     snapshot.forEach(doc => {
-      const data = doc.data();
-      const expiresAt = data.expiresAt?.toDate
-        ? data.expiresAt.toDate()
-        : new Date(data.expiresAt);
-      if (expiresAt > new Date()) {
-        posts.push({ id: doc.id, ...data });
-      }
+      posts.push({ id: doc.id, ...doc.data() });
     });
 
     // Filter by location if city provided
@@ -64,6 +62,7 @@ router.get('/', verifyToken, async (req, res) => {
             );
             return dist <= parseInt(radius);
           }
+          // Fallback to city name match
           return (post.city || '').toLowerCase().includes(
             city.toLowerCase().split(',')[0].trim()
           );
@@ -207,6 +206,7 @@ router.get('/:postId/comments', verifyToken, async (req, res) => {
       authorIds.push(data.userId);
     });
 
+    // Get author profiles
     const profiles = {};
     await Promise.all([...new Set(authorIds)].map(async uid => {
       try {
@@ -271,6 +271,7 @@ router.delete('/:postId', verifyToken, async (req, res) => {
     if (post.data().userId !== userId) {
       return res.status(403).json({ error: 'Not authorized to delete this post' });
     }
+
     await db.collection('pulse').doc(postId).delete();
     return res.status(200).json({ success: true });
   } catch (error) {
