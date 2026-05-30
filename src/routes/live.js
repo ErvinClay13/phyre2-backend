@@ -19,11 +19,7 @@ router.post('/token', verifyToken, async (req, res) => {
 
     if (!appCertificate) {
       return res.status(200).json({
-        success: true,
-        token: null,
-        appId,
-        channelName,
-        uid: 0,
+        success: true, token: null, appId, channelName, uid: 0,
       });
     }
 
@@ -38,11 +34,7 @@ router.post('/token', verifyToken, async (req, res) => {
     );
 
     return res.status(200).json({
-      success: true,
-      token,
-      appId,
-      channelName,
-      uid: 0,
+      success: true, token, appId, channelName, uid: 0,
     });
   } catch (error) {
     console.error('Live token error:', error);
@@ -142,10 +134,8 @@ router.get('/list', verifyToken, async (req, res) => {
       hostIds.push(data.hostId);
     });
 
-    // Sort by viewer count in memory
     lives.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
 
-    // Get host profiles
     const hostProfiles = {};
     await Promise.all(hostIds.map(async (hostId) => {
       try {
@@ -166,4 +156,91 @@ router.get('/list', verifyToken, async (req, res) => {
   }
 });
 
+// ─── CLEANUP FUNCTIONS (called by cron job in server.js) ───────────────────
+
+// Delete lives that ended more than 24 hours ago
+// Also delete lives that are still marked isLive but started more than 24 hours ago
+// (catches cases where host never called /end)
+async function cleanupOldLives() {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoff);
+
+    // Delete ended lives older than 24 hours
+    const endedSnapshot = await db.collection('lives')
+      .where('isLive', '==', false)
+      .where('endedAt', '<=', cutoffTimestamp)
+      .get();
+
+    // Delete stuck lives (isLive=true but started > 24h ago — host never ended)
+    const stuckSnapshot = await db.collection('lives')
+      .where('isLive', '==', true)
+      .where('startedAt', '<=', cutoffTimestamp)
+      .get();
+
+    const batch = db.batch();
+    let count = 0;
+
+    endedSnapshot.forEach(doc => {
+      batch.delete(doc.ref);
+      count++;
+    });
+
+    stuckSnapshot.forEach(doc => {
+      batch.delete(doc.ref);
+      count++;
+    });
+
+    if (count > 0) {
+      await batch.commit();
+      console.log(`[Cleanup] Deleted ${count} old live(s)`);
+    } else {
+      console.log('[Cleanup] No old lives to delete');
+    }
+  } catch (error) {
+    console.error('[Cleanup] Lives cleanup error:', error);
+  }
+}
+
+// Delete pulse posts where expiresAt is in the past
+async function cleanupExpiredPulse() {
+  try {
+    const now = admin.firestore.Timestamp.fromDate(new Date());
+
+    const snapshot = await db.collection('pulse')
+      .where('expiresAt', '<=', now)
+      .get();
+
+    if (snapshot.empty) {
+      console.log('[Cleanup] No expired pulse posts to delete');
+      return;
+    }
+
+    // Delete in batches of 500 (Firestore limit)
+    const chunks = [];
+    const docs = snapshot.docs;
+    for (let i = 0; i < docs.length; i += 500) {
+      chunks.push(docs.slice(i, i + 500));
+    }
+
+    for (const chunk of chunks) {
+      const batch = db.batch();
+      chunk.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
+
+    console.log(`[Cleanup] Deleted ${docs.length} expired pulse post(s)`);
+  } catch (error) {
+    console.error('[Cleanup] Pulse cleanup error:', error);
+  }
+}
+
+// Run both cleanups together
+async function runCleanup() {
+  console.log('[Cleanup] Starting scheduled cleanup...');
+  await Promise.all([cleanupOldLives(), cleanupExpiredPulse()]);
+  console.log('[Cleanup] Cleanup complete');
+}
+
 module.exports = router;
+module.exports.runCleanup = runCleanup;
