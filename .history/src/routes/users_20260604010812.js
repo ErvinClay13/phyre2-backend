@@ -3,9 +3,8 @@ const router = express.Router();
 const { db } = require('../firebase');
 const verifyToken = require('../middleware/auth');
 
-// Helper: calculate distance between two coordinates in miles
 function getDistanceMiles(lat1, lon1, lat2, lon2) {
-  const R = 3958.8; // Earth radius in miles
+  const R = 3958.8;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a =
@@ -16,7 +15,6 @@ function getDistanceMiles(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Helper: get coordinates from city name using Google Geocoding
 async function getCoordsFromCity(cityName) {
   try {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -37,22 +35,14 @@ async function getCoordsFromCity(cityName) {
 // GET /api/users/nearby
 router.get('/nearby', verifyToken, async (req, res) => {
   const userId = req.user.uid;
-  const {
-    city, interestedIn, ageMin, ageMax,
-    ethnicities, excludeSwiped, radius
-  } = req.query;
+  const { city, interestedIn, ageMin, ageMax, ethnicities, excludeSwiped, radius } = req.query;
 
   try {
-    const snapshot = await db
-      .collection('users')
-      .where('onboardingComplete', '==', true)
-      .get();
+    const snapshot = await db.collection('users').where('onboardingComplete', '==', true).get();
 
-    // Get swiped users if needed
     let swipedIds = new Set();
     if (excludeSwiped === 'true') {
-      const swipedSnap = await db
-        .collection('users').doc(userId).collection('swipes').get();
+      const swipedSnap = await db.collection('users').doc(userId).collection('swipes').get();
       swipedSnap.forEach(d => swipedIds.add(d.id));
     }
 
@@ -61,44 +51,55 @@ router.get('/nearby', verifyToken, async (req, res) => {
     const maxAge = parseInt(ageMax) || 65;
     const radiusMiles = parseInt(radius) || 25;
 
-    // Get coordinates for the filter city if provided
+    // Get current user's coordinates for distance calculation
+    let currentUserCoords = null;
+    const currentUserDoc = await db.collection('users').doc(userId).get();
+    if (currentUserDoc.exists) {
+      currentUserCoords = currentUserDoc.data().coordinates || null;
+    }
+
     let filterCoords = null;
     if (city && city.trim()) {
       filterCoords = await getCoordsFromCity(city);
     }
 
     let results = [];
-
     snapshot.forEach(docSnap => {
       if (docSnap.id === userId) return;
       if (swipedIds.has(docSnap.id)) return;
 
       const data = docSnap.data();
 
-      // Age filter
       if (data.age < minAge || data.age > maxAge) return;
 
-      // Sex interest filter
       if (interestedIn && interestedIn !== 'Everyone') {
         if (interestedIn === 'Men' && data.sex !== 'Man') return;
         if (interestedIn === 'Women' && data.sex !== 'Woman') return;
       }
 
-      // Ethnicity filter
       if (ethnicityList.length > 0 && !ethnicityList.includes(data.ethnicity)) return;
 
-      // Radius filter using coordinates if available
+      // Calculate distance from filter city
+      let distanceFromFilter = null;
       if (filterCoords && data.coordinates) {
-        const dist = getDistanceMiles(
+        distanceFromFilter = getDistanceMiles(
           filterCoords.lat, filterCoords.lng,
           data.coordinates.lat, data.coordinates.lng
         );
-        if (dist > radiusMiles) return;
+        if (distanceFromFilter > radiusMiles) return;
       } else if (city && city.trim()) {
-        // Fallback to city name matching if no coordinates
         const userCity = (data.city || '').toLowerCase();
         const filterCity = city.toLowerCase().split(',')[0].trim();
         if (!userCity.includes(filterCity)) return;
+      }
+
+      // Calculate distance from current user for display
+      let distanceFromMe = null;
+      if (currentUserCoords && data.coordinates) {
+        distanceFromMe = getDistanceMiles(
+          currentUserCoords.lat, currentUserCoords.lng,
+          data.coordinates.lat, data.coordinates.lng
+        );
       }
 
       results.push({
@@ -111,12 +112,17 @@ router.get('/nearby', verifyToken, async (req, res) => {
         bio: data.bio,
         profilePhoto: data.profilePhoto,
         interests: data.interests,
+        distance: distanceFromMe !== null ? Math.round(distanceFromMe) : null,
       });
     });
 
-    results = results.sort(() => Math.random() - 0.5);
-    return res.status(200).json({ success: true, users: results });
+    // Sort by distance if available, otherwise random
+    results = results.sort((a, b) => {
+      if (a.distance !== null && b.distance !== null) return a.distance - b.distance;
+      return Math.random() - 0.5;
+    });
 
+    return res.status(200).json({ success: true, users: results });
   } catch (error) {
     console.error('Nearby users error:', error);
     return res.status(500).json({ error: 'Server error fetching users' });
