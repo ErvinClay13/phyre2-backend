@@ -3,7 +3,8 @@ const router = express.Router();
 const { db, admin } = require('../firebase');
 const verifyToken = require('../middleware/auth');
 
-// Helper: get coordinates from city
+const FREE_PULSE_LIMIT = 3;
+
 async function getCoordsFromCity(cityName) {
   try {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -19,7 +20,6 @@ async function getCoordsFromCity(cityName) {
   } catch { return null; }
 }
 
-// Helper: distance in miles
 function getDistanceMiles(lat1, lon1, lat2, lon2) {
   const R = 3958.8;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -31,10 +31,13 @@ function getDistanceMiles(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function getTodayString() {
+  return new Date().toISOString().split('T')[0];
+}
+
 // GET /api/pulse - get feed
 router.get('/', verifyToken, async (req, res) => {
   const { city, radius = 25 } = req.query;
-
   try {
     const snapshot = await db.collection('pulse')
       .orderBy('createdAt', 'desc')
@@ -52,7 +55,6 @@ router.get('/', verifyToken, async (req, res) => {
       }
     });
 
-    // Filter by location if city provided
     if (city && city.trim()) {
       const filterCoords = await getCoordsFromCity(city);
       if (filterCoords) {
@@ -71,7 +73,6 @@ router.get('/', verifyToken, async (req, res) => {
       }
     }
 
-    // Get author profiles
     const authorIds = [...new Set(posts.map(p => p.userId))];
     const authorProfiles = {};
     await Promise.all(authorIds.map(async (uid) => {
@@ -108,26 +109,31 @@ router.post('/', verifyToken, async (req, res) => {
   if (!text || !text.trim()) {
     return res.status(400).json({ error: 'Text is required' });
   }
-
   if (text.length > 280) {
     return res.status(400).json({ error: 'Text must be 280 characters or less' });
   }
 
   try {
-    // Check posting limit — single where clause, no composite index needed
-    const allUserPosts = await db.collection('pulse')
-      .where('userId', '==', userId)
-      .get();
+    // Check if user is premium
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    const isPremium = userData?.isPremium || false;
 
-    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const recentCount = allUserPosts.docs.filter(doc => {
-      const createdAt = doc.data().createdAt?.toDate?.() || new Date(0);
-      return createdAt > sixHoursAgo;
-    }).length;
+    if (!isPremium) {
+      // Check today's pulse count
+      const today = getTodayString();
+      const todayCount = userData?.dailyPulses?.[today] || 0;
 
-    if (recentCount >= 2) {
-      return res.status(429).json({
-        error: 'You can only post 2 Pulses every 6 hours. Try again later.'
+      if (todayCount >= FREE_PULSE_LIMIT) {
+        return res.status(429).json({
+          error: `You have used all ${FREE_PULSE_LIMIT} free Pulses for today. Upgrade to Premium for unlimited posts!`,
+          limitReached: true,
+        });
+      }
+
+      // Increment daily pulse count
+      await db.collection('users').doc(userId).update({
+        [`dailyPulses.${today}`]: admin.firestore.FieldValue.increment(1),
       });
     }
 
@@ -159,32 +165,21 @@ router.post('/', verifyToken, async (req, res) => {
   }
 });
 
-// POST /api/pulse/:postId/like - toggle like
+// POST /api/pulse/:postId/like
 router.post('/:postId/like', verifyToken, async (req, res) => {
   const { postId } = req.params;
   const userId = req.user.uid;
-
   try {
     const postRef = db.collection('pulse').doc(postId);
     const post = await postRef.get();
-
-    if (!post.exists) {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-
+    if (!post.exists) return res.status(404).json({ error: 'Post not found' });
     const likes = post.data().likes || [];
     const isLiked = likes.includes(userId);
-
     if (isLiked) {
-      await postRef.update({
-        likes: admin.firestore.FieldValue.arrayRemove(userId)
-      });
+      await postRef.update({ likes: admin.firestore.FieldValue.arrayRemove(userId) });
     } else {
-      await postRef.update({
-        likes: admin.firestore.FieldValue.arrayUnion(userId)
-      });
+      await postRef.update({ likes: admin.firestore.FieldValue.arrayUnion(userId) });
     }
-
     return res.status(200).json({ success: true, liked: !isLiked });
   } catch (error) {
     console.error('Like pulse error:', error);
@@ -192,10 +187,9 @@ router.post('/:postId/like', verifyToken, async (req, res) => {
   }
 });
 
-// GET /api/pulse/:postId/comments - get comments
+// GET /api/pulse/:postId/comments
 router.get('/:postId/comments', verifyToken, async (req, res) => {
   const { postId } = req.params;
-
   try {
     const snapshot = await db.collection('pulse').doc(postId)
       .collection('comments')
@@ -204,7 +198,6 @@ router.get('/:postId/comments', verifyToken, async (req, res) => {
 
     const comments = [];
     const authorIds = [];
-
     snapshot.forEach(doc => {
       const data = doc.data();
       comments.push({ id: doc.id, ...data });
@@ -234,7 +227,7 @@ router.get('/:postId/comments', verifyToken, async (req, res) => {
   }
 });
 
-// POST /api/pulse/:postId/comments - add comment
+// POST /api/pulse/:postId/comments
 router.post('/:postId/comments', verifyToken, async (req, res) => {
   const { postId } = req.params;
   const { text } = req.body;
@@ -264,11 +257,10 @@ router.post('/:postId/comments', verifyToken, async (req, res) => {
   }
 });
 
-// DELETE /api/pulse/:postId - delete own post
+// DELETE /api/pulse/:postId
 router.delete('/:postId', verifyToken, async (req, res) => {
   const { postId } = req.params;
   const userId = req.user.uid;
-
   try {
     const post = await db.collection('pulse').doc(postId).get();
     if (!post.exists) return res.status(404).json({ error: 'Post not found' });
