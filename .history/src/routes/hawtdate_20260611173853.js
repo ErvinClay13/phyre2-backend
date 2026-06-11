@@ -4,73 +4,62 @@ const { db, admin } = require('../firebase');
 const verifyToken = require('../middleware/auth');
 const { sendPushNotification, getUserPushToken } = require('../utils/notifications');
 
-const ALL_HAWT_DATE_QUESTIONS = [
-  // Food & Drink
-  { id: 'q1', question: "What's your favorite food?", options: ['🍕 Pizza', '🍣 Sushi', '🍔 Burgers', '🌮 Tacos'] },
-  { id: 'q2', question: "Pick your go-to drink?", options: ['☕ Coffee', '🧃 Juice', '🧋 Boba', '💧 Water'] },
-  { id: 'q3', question: "Favorite cuisine?", options: ['🇲🇽 Mexican', '🇯🇵 Japanese', '🇮🇹 Italian', '🇹🇭 Thai'] },
-  { id: 'q4', question: "What's your brunch order?", options: ['🥞 Pancakes', '🥚 Eggs & bacon', '🥑 Avocado toast', '🍳 Omelette'] },
-  { id: 'q5', question: "Sweet or savory?", options: ['🍫 Always sweet', '🧂 Always savory', '🤷 Depends on the mood', '🍭 Both equally'] },
-
-  // Lifestyle
-  { id: 'q6', question: "Ideal weekend?", options: ['🏠 Stay in', '🎉 Go out', '🌿 Nature', '🛍️ Shopping'] },
-  { id: 'q7', question: "Are you a night or morning person?", options: ['🌙 Night owl', '☀️ Early bird', '😴 Depends on the day', '⚡ Both'] },
-  { id: 'q8', question: "How do you handle stress?", options: ['🏃 Exercise', '🎮 Gaming', '🎵 Music', '😴 Sleep it off'] },
-  { id: 'q9', question: "Your ideal Friday night?", options: ['🎬 Movie at home', '🍽️ Dinner out', '🎤 Karaoke', '🎲 Game night'] },
-  { id: 'q10', question: "How clean is your space?", options: ['✨ Spotless always', '🧹 Clean enough', '📦 Organized chaos', '😅 Working on it'] },
-
-  // Relationships
-  { id: 'q11', question: "What are you looking for?", options: ['💍 Serious relationship', '😊 Casual dating', '🤝 Friends first', '🔥 See where it goes'] },
-  { id: 'q12', question: "Your love language?", options: ['🤗 Physical touch', '🎁 Gift giving', '⏰ Quality time', '🗣️ Words of affirmation'] },
-  { id: 'q13', question: "How do you show affection?", options: ['😘 Lots of kisses', '🤣 Humor & jokes', '🍳 Cooking for them', '📱 Constant texting'] },
-  { id: 'q14', question: "First date idea?", options: ['🎳 Bowling', '☕ Coffee chat', '🍽️ Fancy dinner', '🎡 Amusement park'] },
-  { id: 'q15', question: "Dealbreaker in a partner?", options: ['😤 Bad temper', '🚬 Smoking', '💸 Bad with money', '📱 Always on phone'] },
-
-  // Entertainment
-  { id: 'q16', question: "Favorite movie genre?", options: ['😂 Comedy', '😱 Horror', '💕 Romance', '🚀 Action'] },
-  { id: 'q17', question: "Favorite music genre?", options: ['🎵 Hip Hop', '🎸 R&B', '🎤 Pop', '🎻 Other'] },
-  { id: 'q18', question: "Binge-watch or one episode at a time?", options: ['📺 Full binge', '🗓️ One per week', '🎲 Depends on show', '⏸️ I pause too much'] },
-  { id: 'q19', question: "Favorite type of music to vibe to?", options: ['🔥 Trap/Drill', '💜 Old school R&B', '🌊 Lo-fi chill', '🎹 Afrobeats'] },
-  { id: 'q20', question: "Pick a Netflix genre?", options: ['🕵️ True crime', '😂 Stand-up comedy', '💕 Romance', '🌍 Documentaries'] },
-
-  // Travel & Adventure
-  { id: 'q21', question: "Dream vacation?", options: ['🏖️ Beach', '🏙️ City break', '🌄 Adventure', '🏡 Staycation'] },
-  { id: 'q22', question: "Travel style?", options: ['🎒 Backpacker', '🏨 Luxury hotels', '🚗 Road trip', '✈️ All-inclusive'] },
-  { id: 'q23', question: "Would you rather?", options: ['🏝️ Private island', '🗼 Paris trip', '🗻 Mountain cabin', '🚀 Space trip'] },
-  { id: 'q24', question: "How far would you travel for love?", options: ['🏘️ Same city only', '🚗 Drive distance', '✈️ Different state', '🌍 Anywhere'] },
-
-  // Sports & Fitness
-  { id: 'q25', question: "Favorite sport to watch?", options: ['🏀 Basketball', '🏈 Football', '⚽ Soccer', '🎮 Esports'] },
-  { id: 'q26', question: "How do you stay active?", options: ['🏋️ Gym', '🏃 Running', '🧘 Yoga', '😅 Not really'] },
-  { id: 'q27', question: "Morning workout or evening?", options: ['🌅 Morning', '🌆 Evening', '🕛 Lunch break', '📅 Whenever I can'] },
-
-  // Personality
-  { id: 'q28', question: "Favorite season?", options: ['☀️ Summer', '🍂 Fall', '❄️ Winter', '🌸 Spring'] },
-  { id: 'q29', question: "Pick your vibe?", options: ['😎 Laid back', '⚡ High energy', '🤓 Intellectual', '🎭 Unpredictable'] },
-  { id: 'q30', question: "How do you make decisions?", options: ['🧠 Think it through', '❤️ Go with my heart', '🎲 Wing it', '👥 Ask others'] },
-  { id: 'q31', question: "Are you an introvert or extrovert?", options: ['🏠 Total introvert', '🎉 Total extrovert', '⚖️ Right in the middle', '🔄 Depends on the day'] },
-  { id: 'q32', question: "Your biggest flex?", options: ['💼 Career success', '😂 Sense of humor', '💪 Loyalty', '🧠 Intelligence'] },
-
-  // Random & Fun
-  { id: 'q33', question: "Dog or cat person?", options: ['🐶 Dog all day', '🐱 Cat lover', '🐾 Both!', '🚫 Neither'] },
-  { id: 'q34', question: "Pick a superpower?", options: ['🦸 Invisibility', '⚡ Super speed', '🧠 Mind reading', '✈️ Flying'] },
-  { id: 'q35', question: "Ideal Sunday morning?", options: ['😴 Sleep in', '🍳 Cook breakfast', '🏃 Morning run', '⛪ Church'] },
-  { id: 'q36', question: "Social media habit?", options: ['📱 Always scrolling', '📸 Post occasionally', '👀 Lurker only', '🚫 Barely use it'] },
-  { id: 'q37', question: "How do you spend money?", options: ['👗 Fashion & style', '🍽️ Food & dining', '✈️ Travel', '💰 Save everything'] },
-  { id: 'q38', question: "Pick a car vibe?", options: ['🚗 Practical & reliable', '🏎️ Fast & flashy', '🚙 Big truck/SUV', '🚕 I Uber everywhere'] },
-  { id: 'q39', question: "Tattoos and piercings?", options: ['✨ Love them', '👌 Fine in moderation', '😐 Not my thing', '💉 I have some'] },
-  { id: 'q40', question: "What describes your humor?", options: ['😂 Sarcastic', '🤪 Goofy & random', '🧠 Dry & witty', '😇 Clean & wholesome'] },
+const HAWT_DATE_QUESTIONS = [
+  {
+    id: 'q1',
+    question: "What's your favorite food?",
+    options: ['🍕 Pizza', '🍣 Sushi', '🍔 Burgers', '🌮 Tacos'],
+  },
+  {
+    id: 'q2',
+    question: "Ideal weekend?",
+    options: ['🏠 Stay in', '🎉 Go out', '🌿 Nature', '🛍️ Shopping'],
+  },
+  {
+    id: 'q3',
+    question: "Favorite music genre?",
+    options: ['🎵 Hip Hop', '🎸 R&B', '🎤 Pop', '🎻 Other'],
+  },
+  {
+    id: 'q4',
+    question: "Favorite sport?",
+    options: ['🏀 Basketball', '🏈 Football', '⚽ Soccer', '🎮 Not into sports'],
+  },
+  {
+    id: 'q5',
+    question: "Are you a night or morning person?",
+    options: ['🌙 Night owl', '☀️ Early bird', '😴 Depends on the day', '⚡ Both'],
+  },
+  {
+    id: 'q6',
+    question: "Favorite season?",
+    options: ['☀️ Summer', '🍂 Fall', '❄️ Winter', '🌸 Spring'],
+  },
+  {
+    id: 'q7',
+    question: "What are you looking for?",
+    options: ['💍 Serious relationship', '😊 Casual dating', '🤝 Friends first', '🔥 See where it goes'],
+  },
+  {
+    id: 'q8',
+    question: "Dream vacation?",
+    options: ['🏖️ Beach', '🏙️ City break', '🌄 Adventure', '🏡 Staycation'],
+  },
+  {
+    id: 'q9',
+    question: "Favorite movie genre?",
+    options: ['😂 Comedy', '😱 Horror', '💕 Romance', '🚀 Action'],
+  },
+  {
+    id: 'q10',
+    question: "Your love language?",
+    options: ['🤗 Physical touch', '🎁 Gift giving', '⏰ Quality time', '🗣️ Words of affirmation'],
+  },
 ];
-
-// Randomly select 10 questions each time
-function getRandomQuestions() {
-  const shuffled = [...ALL_HAWT_DATE_QUESTIONS].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 10).map((q, i) => ({ ...q, id: `q${i + 1}` }));
-}
 
 // GET /api/hawtdate/questions
 router.get('/questions', verifyToken, (req, res) => {
-  res.json({ success: true, questions: getRandomQuestions() });
+  res.json({ success: true, questions: HAWT_DATE_QUESTIONS });
 });
 
 // POST /api/hawtdate/toggle-available
@@ -268,7 +257,7 @@ router.post('/:hawtDateId/answer', verifyToken, async (req, res) => {
       // Both finished — calculate score
       const otherAnswers = isUser1 ? hawtDate.user2Answers : hawtDate.user1Answers;
       let score = 0;
-      const questionIds = Object.keys(answers);
+      const questionIds = HAWT_DATE_QUESTIONS.map(q => q.id);
       questionIds.forEach(qId => {
         if (answers[qId] && otherAnswers[qId] && answers[qId] === otherAnswers[qId]) {
           score++;

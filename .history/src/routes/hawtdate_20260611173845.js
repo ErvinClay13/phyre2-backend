@@ -41,7 +41,7 @@ const ALL_HAWT_DATE_QUESTIONS = [
 
   // Sports & Fitness
   { id: 'q25', question: "Favorite sport to watch?", options: ['🏀 Basketball', '🏈 Football', '⚽ Soccer', '🎮 Esports'] },
-  { id: 'q26', question: "How do you stay active?", options: ['🏋️ Gym', '🏃 Running', '🧘 Yoga', '😅 Not really'] },
+  { id: 'q26', question: "How do you stay active?", options: ['🏋️ Gym', '🏃 Running', '🧘 Yoga', '😅 I don't really'] },
   { id: 'q27', question: "Morning workout or evening?", options: ['🌅 Morning', '🌆 Evening', '🕛 Lunch break', '📅 Whenever I can'] },
 
   // Personality
