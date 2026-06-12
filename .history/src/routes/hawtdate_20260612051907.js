@@ -68,26 +68,9 @@ function getRandomQuestions() {
   return shuffled.slice(0, 10).map((q, i) => ({ ...q, id: `q${i + 1}` }));
 }
 
-// GET /api/hawtdate/:hawtDateId/questions
-// Returns the SAME 10 questions for both users in this Hawt Date
-router.get('/:hawtDateId/questions', verifyToken, async (req, res) => {
-  const userId = req.user.uid;
-  const { hawtDateId } = req.params;
-
-  try {
-    const hawtDateDoc = await db.collection('hawtDates').doc(hawtDateId).get();
-    if (!hawtDateDoc.exists) return res.status(404).json({ error: 'Hawt Date not found' });
-
-    const hawtDate = hawtDateDoc.data();
-    if (hawtDate.user1Id !== userId && hawtDate.user2Id !== userId) {
-      return res.status(403).json({ error: 'Not part of this Hawt Date' });
-    }
-
-    res.json({ success: true, questions: hawtDate.questions || [] });
-  } catch (error) {
-    console.error('Get questions error:', error);
-    return res.status(500).json({ error: 'Server error' });
-  }
+// GET /api/hawtdate/questions
+router.get('/questions', verifyToken, (req, res) => {
+  res.json({ success: true, questions: getRandomQuestions() });
 });
 
 // POST /api/hawtdate/toggle-available
@@ -219,15 +202,11 @@ router.post('/start', verifyToken, async (req, res) => {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 48);
 
-    // Generate the question set ONCE — both users answer the same questions
-    const sharedQuestions = getRandomQuestions();
-
     // Create Hawt Date document
     const hawtDateRef = await db.collection('hawtDates').add({
       user1Id: userId,
       user2Id: partner.id,
       status: 'answering',
-      questions: sharedQuestions,
       user1Answers: {},
       user2Answers: {},
       user1Finished: false,
@@ -241,15 +220,10 @@ router.post('/start', verifyToken, async (req, res) => {
       revealedAt: null,
     });
 
-    // Increment daily count for both users (free users only)
-    const today = new Date().toISOString().split('T')[0];
+    // Increment daily count for free users
     if (!userData.isPremium) {
+      const today = new Date().toISOString().split('T')[0];
       await db.collection('users').doc(userId).update({
-        [`dailyHawtDates.${today}`]: admin.firestore.FieldValue.increment(1),
-      });
-    }
-    if (!partner.isPremium) {
-      await db.collection('users').doc(partner.id).update({
         [`dailyHawtDates.${today}`]: admin.firestore.FieldValue.increment(1),
       });
     }
