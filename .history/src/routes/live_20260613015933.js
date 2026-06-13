@@ -129,11 +129,9 @@ router.get('/list', verifyToken, async (req, res) => {
 });
 
 // POST /api/live/invite-cohost
-// Note: only sent to users currently viewing the live (already in LiveRoom),
-// so this notification is mostly informational — they'll see the invite
-// popup via the Firebase 'cohost' listener already running on their screen.
 router.post('/invite-cohost', verifyToken, async (req, res) => {
   const { targetUserId, channelName, hostName } = req.body;
+  const hostId = req.user.uid;
   try {
     const { getUserPushToken, sendPushNotification } = require('../utils/notifications');
     const targetToken = await getUserPushToken(db, targetUserId);
@@ -142,7 +140,7 @@ router.post('/invite-cohost', verifyToken, async (req, res) => {
         token: targetToken,
         title: '🎙 Co-host Invite!',
         body: `${hostName} invited you to co-host their live stream!`,
-        data: { screen: 'LiveRoom', channelName },
+        data: { screen: 'LiveRoom', channelName, hostId, hostName },
       });
     }
     return res.status(200).json({ success: true });
